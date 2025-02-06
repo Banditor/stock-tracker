@@ -104,6 +104,21 @@
       cursor: pointer;
       font-weight: bold;
     }
+    /* טבלת רכישות אחרונות */
+    #recent-purchases-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    #recent-purchases-table th, #recent-purchases-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    #recent-purchases-table th {
+      background-color: #007acc;
+      color: #fff;
+    }
     /* עמוד פרטים */
     #stock-details {
       display: none;
@@ -175,7 +190,7 @@
       <button id="save-settings">שמור הגדרות</button>
     </div>
 
-    <!-- דף ראשי: טבלה להצגת מניות -->
+    <!-- דף ראשי: טבלת מניות + רכישות אחרונות -->
     <div id="main-page">
       <form id="add-stock-form" style="text-align:center; margin-bottom:20px;">
         <input type="text" id="stock-symbol" placeholder="הכנס סימול מניה (למשל: RXRX)" required>
@@ -195,6 +210,23 @@
           <!-- שורות המניות נטענות כאן -->
         </tbody>
       </table>
+
+      <div id="recent-purchases-section">
+        <h3>רכישות אחרונות בקרנות (14 הימים האחרונים)</h3>
+        <table id="recent-purchases-table">
+          <thead>
+            <tr>
+              <th>סימול</th>
+              <th>קרן</th>
+              <th>תאריך</th>
+              <th>מניות</th>
+              <th>שווי</th>
+            </tr>
+          </thead>
+          <tbody id="recent-purchases-body"></tbody>
+        </table>
+      </div>
+
       <button id="save-button">שמור עדכון ל-GitHub</button>
     </div>
     
@@ -280,6 +312,7 @@
           stockList.push(symbol);
           setStockList(stockList);
           loadStocksTable();
+          loadRecentPurchases();
         }
         symbolInput.value = '';
       }
@@ -291,9 +324,10 @@
       stockList = stockList.filter(item => item !== symbol);
       setStockList(stockList);
       loadStocksTable();
+      loadRecentPurchases();
     }
 
-    // הפונקציה שמחשבת "לפני כמה זמן" (לדוגמא: דקות/שעות/ימים)
+    // פונקציה שמחשבת "לפני כמה זמן" (למשל: דקות/שעות/ימים)
     function timeSince(date) {
       const seconds = Math.floor((new Date() - new Date(date)) / 1000);
       let interval = Math.floor(seconds / 31536000);
@@ -316,7 +350,7 @@
         const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`);
         if(response.ok) {
           const data = await response.json();
-          return data; // מכיל: c (מחיר אחרון), d (שינוי), dp (שינוי %), h, l, o, pc (מחיר סגירה קודם)
+          return data; // c: מחיר אחרון, d: שינוי, dp: שינוי %
         }
       } catch(e) {
         console.error(e);
@@ -324,7 +358,7 @@
       return null;
     }
 
-    // פונקציה לקבלת חדשות ממספר API (כפי שהגדרנו)
+    // פונקציה לקבלת חדשות ממספר API
     async function fetchNews(symbol) {
       const { finnhubKey, fmpKey } = getAPIKeys();
       let today = new Date();
@@ -372,7 +406,7 @@
           source: "Financial Modeling Prep"
         });
       });
-      // הסרת כפילויות על בסיס כותרת, מיון לפי תאריך יורד
+      // הסרת כפילויות על בסיס כותרת ומיון לפי תאריך יורד
       const uniqueNews = [];
       const headlines = new Set();
       combinedNews.sort((a, b) => b.date - a.date).forEach(item => {
@@ -382,6 +416,79 @@
         }
       });
       return uniqueNews;
+    }
+
+    // פונקציה לקבלת נתוני קרנות – נתוני סימולציה לעדכון
+    async function fetchFundHoldings(symbol) {
+      // דוגמה עם מספר קרנות:
+      return [
+        { 
+          fund: 'ARKK', 
+          currentHolding: { shares: 19400000, marketValue: 150000000 },
+          actions: [
+            { date: '2025-01-10', shares: 1830000, marketValue: 14500000 },
+            { date: '2025-01-08', shares: 4700000, marketValue: 37000000 }
+          ],
+          infoLink: "https://ark-invest.com/"
+        },
+        { 
+          fund: 'Vanguard',
+          currentHolding: { shares: 25000000, marketValue: 200000000 },
+          actions: [
+            { date: '2025-01-12', shares: 3000000, marketValue: 25000000 },
+            { date: '2025-01-05', shares: 1500000, marketValue: 12500000 }
+          ],
+          infoLink: "https://investor.vanguard.com/"
+        },
+        { 
+          fund: 'Berkshire Hathaway',
+          currentHolding: { shares: 18000000, marketValue: 220000000 },
+          actions: [
+            { date: '2025-01-15', shares: 2500000, marketValue: 30000000 },
+            { date: '2025-01-09', shares: 2000000, marketValue: 24000000 }
+          ],
+          infoLink: "https://www.berkshirehathaway.com/"
+        },
+        { 
+          fund: 'BlackRock',
+          currentHolding: { shares: 21000000, marketValue: 180000000 },
+          actions: [
+            { date: '2025-01-11', shares: 2200000, marketValue: 20000000 },
+            { date: '2025-01-07', shares: 1800000, marketValue: 16000000 }
+          ],
+          infoLink: "https://www.blackrock.com/"
+        },
+        { 
+          fund: 'Fidelity',
+          currentHolding: { shares: 17000000, marketValue: 140000000 },
+          actions: [
+            { date: '2025-01-13', shares: 2100000, marketValue: 19000000 },
+            { date: '2025-01-06', shares: 1600000, marketValue: 15000000 }
+          ],
+          infoLink: "https://www.fidelity.com/"
+        },
+        { 
+          fund: 'PRGFX',
+          currentHolding: { shares: 19000000, marketValue: 160000000 },
+          actions: [
+            { date: '2025-01-14', shares: 2300000, marketValue: 21000000 },
+            { date: '2025-01-08', shares: 1700000, marketValue: 15000000 }
+          ],
+          infoLink: "https://www.prgf.com/"
+        }
+      ];
+    }
+
+    // פונקציה לקבלת רכישות אחרונות של קרנות (14 הימים האחרונים) – נתוני סימולציה
+    async function fetchRecentFundPurchases() {
+      // דוגמה של רכישות עבור מספר קרנות
+      return [
+        { fund: 'Vanguard', symbol: 'RXRX', date: new Date(new Date().getTime() - 3*86400000), shares: 500000, marketValue: 4000000 },
+        { fund: 'Berkshire Hathaway', symbol: 'AAPL', date: new Date(new Date().getTime() - 7*86400000), shares: 300000, marketValue: 3500000 },
+        { fund: 'BlackRock', symbol: 'MSFT', date: new Date(new Date().getTime() - 10*86400000), shares: 400000, marketValue: 5000000 },
+        { fund: 'Fidelity', symbol: 'GOOG', date: new Date(new Date().getTime() - 5*86400000), shares: 250000, marketValue: 3000000 },
+        { fund: 'PRGFX', symbol: 'AMZN', date: new Date(new Date().getTime() - 2*86400000), shares: 350000, marketValue: 4500000 }
+      ];
     }
 
     // טוען את טבלת המניות בעמוד הראשי
@@ -397,10 +504,9 @@
         const allNews = await fetchNews(symbol);
         const latestNews = allNews.slice(0, 2);
 
-        // יצירת שורה בטבלה
         const tr = document.createElement('tr');
 
-        // עמודת סימול – כלחיצה תעביר לעמוד הפרטים
+        // עמודת סימול – לחיצה מובילה לעמוד הפרטים
         const tdSymbol = document.createElement('td');
         const link = document.createElement('a');
         link.href = window.location.pathname + '?symbol=' + symbol;
@@ -408,16 +514,16 @@
         tdSymbol.appendChild(link);
         tr.appendChild(tdSymbol);
 
-        // עמודת מחיר אחרון – כולל אחוז שינוי (בין סוגריים)
+        // עמודת מחיר אחרון (אחוז שינוי)
         const tdLastPrice = document.createElement('td');
         if (quote && quote.c) {
-          tdLastPrice.textContent = quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%": "0%") + ")";
+          tdLastPrice.textContent = quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%" : "0%") + ")";
         } else {
           tdLastPrice.textContent = "לא זמין";
         }
         tr.appendChild(tdLastPrice);
 
-        // עמודת שינוי היום – מציג שינוי ודגל צבע (ירוק/אדום)
+        // עמודת שינוי היום
         const tdChange = document.createElement('td');
         if (quote) {
           const changeText = (quote.d >= 0 ? "+" : "") + (quote.d ? quote.d.toFixed(2) : "0");
@@ -428,7 +534,7 @@
         }
         tr.appendChild(tdChange);
 
-        // עמודת חדשות – עד שתי חדשות אחרונות
+        // עמודת חדשות – שתי החדשות האחרונות
         const tdNews = document.createElement('td');
         if (latestNews.length > 0) {
           latestNews.forEach(item => {
@@ -442,7 +548,7 @@
         }
         tr.appendChild(tdNews);
 
-        // עמודת פעולות – כפתור הסרה
+        // עמודת פעולות – כפתור להסרת המניה
         const tdActions = document.createElement('td');
         const removeBtn = document.createElement('button');
         removeBtn.textContent = "X";
@@ -458,7 +564,33 @@
       }
     }
 
-    // שמירה ל-GitHub (עדכון פרטים כנדרש)
+    // טוען את רכישות הקרנות בעמוד הראשי (14 הימים האחרונים)
+    async function loadRecentPurchases() {
+      const purchases = await fetchRecentFundPurchases();
+      const body = document.getElementById('recent-purchases-body');
+      body.innerHTML = '';
+      purchases.forEach(item => {
+        const tr = document.createElement('tr');
+        const tdSymbol = document.createElement('td');
+        tdSymbol.textContent = item.symbol;
+        const tdFund = document.createElement('td');
+        tdFund.textContent = item.fund;
+        const tdDate = document.createElement('td');
+        tdDate.textContent = item.date.toISOString().split('T')[0];
+        const tdShares = document.createElement('td');
+        tdShares.textContent = item.shares.toLocaleString();
+        const tdValue = document.createElement('td');
+        tdValue.textContent = item.marketValue.toLocaleString() + " $";
+        tr.appendChild(tdSymbol);
+        tr.appendChild(tdFund);
+        tr.appendChild(tdDate);
+        tr.appendChild(tdShares);
+        tr.appendChild(tdValue);
+        body.appendChild(tr);
+      });
+    }
+
+    // שמירה ל-GitHub (יש לעדכן פרטים אישיים)
     document.getElementById('save-button').addEventListener('click', () => {
       const stockList = getStockList();
       const username = 'YOUR_GITHUB_USERNAME';
@@ -513,10 +645,11 @@
         document.getElementById('main-page').style.display = 'block';
         document.getElementById('stock-details').style.display = 'none';
         loadStocksTable();
+        loadRecentPurchases();
       }
     });
 
-    // כפתור "חזור לרשימה" בעמוד פרטים
+    // כפתור "חזור לרשימה" בעמוד הפרטים
     document.getElementById('back-button').addEventListener('click', () => {
       window.location.href = window.location.pathname;
     });
@@ -525,10 +658,10 @@
     async function loadStockDetails(symbol) {
       document.getElementById('stock-title').textContent = 'מידע על מניה: ' + symbol;
       
-      // קבלת Quote לנתוני מחיר אחרון ושינוי
+      // קבלת נתוני Quote
       const quote = await fetchQuote(symbol);
       if (quote) {
-        document.getElementById('last-price').textContent = quote.c ? quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%": "0%") + ")" : "לא זמין";
+        document.getElementById('last-price').textContent = quote.c ? quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%" : "0%") + ")" : "לא זמין";
       } else {
         document.getElementById('last-price').textContent = "לא זמין";
       }
@@ -545,7 +678,7 @@
         const keywords = ["דילול", "בייבאק", "מענק", "מניה", "עובדים"];
         return keywords.some(keyword => item.headline.toLowerCase().includes(keyword.toLowerCase()));
       });
-      // חדשות שוק – כל החדשות שאינן נכללות ב-corporateNews (לפי כותרת)
+      // חדשות שוק – החדשות שלא נמצאות ב-corporateNews (לפי כותרת)
       const corporateSet = new Set(corporateNews.map(item => item.headline));
       const generalNews = allNews.filter(item => !corporateSet.has(item.headline));
 
@@ -579,7 +712,7 @@
         });
       }
 
-      // טעינת מידע על קרנות (נתונים לדוגמה)
+      // טעינת מידע על קרנות (עם נתוני סימולציה עבור קרנות מגוונות)
       const fundsData = await fetchFundHoldings(symbol);
       const fundsEl = document.getElementById('funds-list');
       fundsEl.innerHTML = '';
@@ -611,29 +744,6 @@
         console.error(e);
       }
       return {};
-    }
-
-    // נתוני קרנות – דוגמא (ניתן להחליף בקריאות API אמיתיות)
-    async function fetchFundHoldings(symbol) {
-      return [
-        { 
-          fund: 'ARKK', 
-          currentHolding: { shares: 19400000, marketValue: 150000000 },
-          actions: [
-            { date: '2025-01-10', shares: 1830000, marketValue: 14500000 },
-            { date: '2025-01-08', shares: 4700000, marketValue: 37000000 }
-          ],
-          infoLink: "https://ark-invest.com/"
-        },
-        { 
-          fund: 'ARKG', 
-          currentHolding: { shares: 336653, marketValue: 2700000 },
-          actions: [
-            { date: '2025-01-03', shares: 336653, marketValue: 2700000 }
-          ],
-          infoLink: "https://ark-invest.com/"
-        }
-      ];
     }
   </script>
 </body>

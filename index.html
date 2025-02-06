@@ -187,6 +187,14 @@
         <label for="fmpKey">Financial Modeling Prep API Key:</label><br>
         <input type="text" id="fmpKey" placeholder="FMP API Key" value="9RPgOrGpBmFvyKNIeWmHIQqlpLDc1RSf">
       </div>
+      <div>
+        <label for="nasdaqKey">Nasdaq Data Link API Key:</label><br>
+        <input type="text" id="nasdaqKey" placeholder="Nasdaq API Key" value="RLZMYz9DesFAxjsHmKx7">
+      </div>
+      <div>
+        <label for="secKey">SEC API Key:</label><br>
+        <input type="text" id="secKey" placeholder="SEC API Key" value="6c1144bca55285e75f56b7557c25c839de17fe4e8f44450eeeadf3cd72eeb80e">
+      </div>
       <button id="save-settings">שמור הגדרות</button>
     </div>
 
@@ -264,6 +272,8 @@
     const defaultAlphaKey = "NGLPQWAGSXDBTCB5";
     const defaultFinnhubKey = "cuidauhr01qtqfmidisgcuidauhr01qtqfmidit0";
     const defaultFmpKey = "9RPgOrGpBmFvyKNIeWmHIQqlpLDc1RSf";
+    const defaultNasdaqKey = "RLZMYz9DesFAxjsHmKx7";
+    const defaultSecKey = "6c1144bca55285e75f56b7557c25c839de17fe4e8f44450eeeadf3cd72eeb80e";
     const STOCK_LIST_KEY = 'stockList';
 
     // פונקציה לקבלת API Keys מ-localStorage או ברירת מחדל
@@ -271,7 +281,9 @@
       return {
         alphaKey: localStorage.getItem('alphaKey') || defaultAlphaKey,
         finnhubKey: localStorage.getItem('finnhubKey') || defaultFinnhubKey,
-        fmpKey: localStorage.getItem('fmpKey') || defaultFmpKey
+        fmpKey: localStorage.getItem('fmpKey') || defaultFmpKey,
+        nasdaqKey: localStorage.getItem('nasdaqKey') || defaultNasdaqKey,
+        secKey: localStorage.getItem('secKey') || defaultSecKey
       };
     }
 
@@ -280,9 +292,13 @@
       const alphaKey = document.getElementById('alphaKey').value.trim();
       const finnhubKey = document.getElementById('finnhubKey').value.trim();
       const fmpKey = document.getElementById('fmpKey').value.trim();
+      const nasdaqKey = document.getElementById('nasdaqKey').value.trim();
+      const secKey = document.getElementById('secKey').value.trim();
       if(alphaKey) localStorage.setItem('alphaKey', alphaKey);
       if(finnhubKey) localStorage.setItem('finnhubKey', finnhubKey);
       if(fmpKey) localStorage.setItem('fmpKey', fmpKey);
+      if(nasdaqKey) localStorage.setItem('nasdaqKey', nasdaqKey);
+      if(secKey) localStorage.setItem('secKey', secKey);
       alert('הגדרות API נשמרו!');
     });
 
@@ -327,7 +343,7 @@
       loadRecentPurchases();
     }
 
-    // פונקציה שמחשבת "לפני כמה זמן" (למשל: דקות/שעות/ימים)
+    // פונקציה שמחשבת "לפני כמה זמן" (לדוגמא: דקות/שעות/ימים)
     function timeSince(date) {
       const seconds = Math.floor((new Date() - new Date(date)) / 1000);
       let interval = Math.floor(seconds / 31536000);
@@ -343,14 +359,16 @@
       return Math.floor(seconds) + " שניות";
     }
 
-    // פונקציה לקבלת נתוני Quote ממקור Finnhub
+    // --- פונקציות לקריאת נתוני מחיר (Quote) וחדשות ממספר API ---
+
+    // קריאה לנתוני Quote מ-Finnhub
     async function fetchQuote(symbol) {
       const { finnhubKey } = getAPIKeys();
       try {
         const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`);
         if(response.ok) {
           const data = await response.json();
-          return data; // c: מחיר אחרון, d: שינוי, dp: שינוי %
+          return data; // c: מחיר אחרון, d: שינוי, dp: אחוז שינוי
         }
       } catch(e) {
         console.error(e);
@@ -358,137 +376,162 @@
       return null;
     }
 
-    // פונקציה לקבלת חדשות ממספר API
-    async function fetchNews(symbol) {
-      const { finnhubKey, fmpKey } = getAPIKeys();
+    // קריאה לחדשות מ-Finnhub
+    async function fetchNewsFinnhub(symbol) {
+      const { finnhubKey } = getAPIKeys();
       let today = new Date();
       let pastDate = new Date();
       pastDate.setDate(today.getDate() - 30);
       const from = pastDate.toISOString().split('T')[0];
       const to = today.toISOString().split('T')[0];
-
-      let newsFinnhub = [];
       try {
         const response = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${to}&token=${finnhubKey}`);
         if(response.ok){
-          newsFinnhub = await response.json();
+          const data = await response.json();
+          return data.map(item => ({
+             date: item.datetime ? new Date(item.datetime * 1000) : new Date(),
+             headline: item.headline,
+             details: item.summary || "",
+             url: item.url,
+             source: "Finnhub"
+          }));
         }
-      } catch(e) {
-        console.error(e);
-      }
+      } catch(e) { console.error(e); }
+      return [];
+    }
 
-      let newsFMP = [];
+    // קריאה לחדשות מ-Financial Modeling Prep
+    async function fetchNewsFMP(symbol) {
+      const { fmpKey } = getAPIKeys();
       try {
         const response = await fetch(`https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpKey}`);
         if(response.ok){
-          newsFMP = await response.json();
+          const data = await response.json();
+          return data.map(item => ({
+             date: item.publishedDate ? new Date(item.publishedDate) : new Date(),
+             headline: item.title,
+             details: item.text || "",
+             url: item.url,
+             source: "Financial Modeling Prep"
+          }));
         }
-      } catch(e) {
-        console.error(e);
-      }
+      } catch(e) { console.error(e); }
+      return [];
+    }
 
-      const combinedNews = [];
-      newsFinnhub.forEach(item => {
-        combinedNews.push({
-          date: item.datetime ? new Date(item.datetime * 1000) : new Date(),
-          headline: item.headline,
-          details: item.summary || "",
-          url: item.url,
-          source: "Finnhub"
-        });
-      });
-      newsFMP.forEach(item => {
-        combinedNews.push({
-          date: item.publishedDate ? new Date(item.publishedDate) : new Date(),
-          headline: item.title,
-          details: item.text || "",
-          url: item.url,
-          source: "Financial Modeling Prep"
-        });
-      });
-      // הסרת כפילויות על בסיס כותרת ומיון לפי תאריך יורד
+    // קריאה לחדשות מ-Nasdaq Data Link
+    async function fetchNasdaqNews(symbol) {
+      const { nasdaqKey } = getAPIKeys();
+      // ייתכן ויש צורך להתאים את הקוד למזהה המדויק של קבוצת הנתונים (dataset) עבור חדשות
+      const url = `https://data.nasdaq.com/api/v3/datasets/NASDAQ/NEWS.json?api_key=${nasdaqKey}&ticker=${symbol}`;
+      try {
+        const response = await fetch(url);
+        if(response.ok){
+          const data = await response.json();
+          let newsItems = [];
+          if(data && data.dataset && data.dataset.data) {
+              // הנחה: כל פריט הוא מערך עם: [date, headline, summary, url, ...]
+              newsItems = data.dataset.data.map(item => ({
+                  date: new Date(item[0]),
+                  headline: item[1],
+                  details: item[2] || "",
+                  url: item[3] || "",
+                  source: "Nasdaq Data Link"
+              }));
+          }
+          return newsItems;
+        }
+      } catch(e) { console.error(e); }
+      return [];
+    }
+
+    // קריאה לנתוני filings / חדשות מ-SEC API
+    async function fetchSecNews(symbol) {
+      const { secKey } = getAPIKeys();
+      // שימוש ב-SEC API לקבלת דוחות רלוונטיים (למשל 13F או filings אחרים)
+      const url = `https://api.sec-api.io/filings?query=${symbol}&token=${secKey}`;
+      try {
+        const response = await fetch(url);
+        if(response.ok){
+          const data = await response.json();
+          let newsItems = [];
+          if(data && data.filings) {
+            newsItems = data.filings.map(item => ({
+              date: item.filedDate ? new Date(item.filedDate) : new Date(),
+              headline: item.title || "דוח SEC",
+              details: "",
+              url: item.link || "",
+              source: "SEC API"
+            }));
+          }
+          return newsItems;
+        }
+      } catch(e) { console.error(e); }
+      return [];
+    }
+
+    // מאגד את כל מקורות החדשות
+    async function fetchNews(symbol) {
+      const [n1, n2, n3, n4] = await Promise.all([
+        fetchNewsFinnhub(symbol),
+        fetchNewsFMP(symbol),
+        fetchNasdaqNews(symbol),
+        fetchSecNews(symbol)
+      ]);
+      const combined = [...n1, ...n2, ...n3, ...n4];
+      // הסרת כפילויות ומיון לפי תאריך יורד
       const uniqueNews = [];
       const headlines = new Set();
-      combinedNews.sort((a, b) => b.date - a.date).forEach(item => {
-        if(!headlines.has(item.headline)) {
-          headlines.add(item.headline);
-          uniqueNews.push(item);
-        }
+      combined.sort((a, b) => b.date - a.date).forEach(item => {
+          if(!headlines.has(item.headline)) {
+             headlines.add(item.headline);
+             uniqueNews.push(item);
+          }
       });
       return uniqueNews;
     }
 
-    // פונקציה לקבלת נתוני קרנות – נתוני סימולציה לעדכון
+    // קריאה לנתוני קרנות – במקום dummy data, מבצעים קריאה ל-SEC API לקבלת נתוני filings (כדוגמה, יש להתאים לפי תיעוד)
     async function fetchFundHoldings(symbol) {
-      // דוגמה עם מספר קרנות:
-      return [
-        { 
-          fund: 'ARKK', 
-          currentHolding: { shares: 19400000, marketValue: 150000000 },
-          actions: [
-            { date: '2025-01-10', shares: 1830000, marketValue: 14500000 },
-            { date: '2025-01-08', shares: 4700000, marketValue: 37000000 }
-          ],
-          infoLink: "https://ark-invest.com/"
-        },
-        { 
-          fund: 'Vanguard',
-          currentHolding: { shares: 25000000, marketValue: 200000000 },
-          actions: [
-            { date: '2025-01-12', shares: 3000000, marketValue: 25000000 },
-            { date: '2025-01-05', shares: 1500000, marketValue: 12500000 }
-          ],
-          infoLink: "https://investor.vanguard.com/"
-        },
-        { 
-          fund: 'Berkshire Hathaway',
-          currentHolding: { shares: 18000000, marketValue: 220000000 },
-          actions: [
-            { date: '2025-01-15', shares: 2500000, marketValue: 30000000 },
-            { date: '2025-01-09', shares: 2000000, marketValue: 24000000 }
-          ],
-          infoLink: "https://www.berkshirehathaway.com/"
-        },
-        { 
-          fund: 'BlackRock',
-          currentHolding: { shares: 21000000, marketValue: 180000000 },
-          actions: [
-            { date: '2025-01-11', shares: 2200000, marketValue: 20000000 },
-            { date: '2025-01-07', shares: 1800000, marketValue: 16000000 }
-          ],
-          infoLink: "https://www.blackrock.com/"
-        },
-        { 
-          fund: 'Fidelity',
-          currentHolding: { shares: 17000000, marketValue: 140000000 },
-          actions: [
-            { date: '2025-01-13', shares: 2100000, marketValue: 19000000 },
-            { date: '2025-01-06', shares: 1600000, marketValue: 15000000 }
-          ],
-          infoLink: "https://www.fidelity.com/"
-        },
-        { 
-          fund: 'PRGFX',
-          currentHolding: { shares: 19000000, marketValue: 160000000 },
-          actions: [
-            { date: '2025-01-14', shares: 2300000, marketValue: 21000000 },
-            { date: '2025-01-08', shares: 1700000, marketValue: 15000000 }
-          ],
-          infoLink: "https://www.prgf.com/"
+      const { secKey } = getAPIKeys();
+      const url = `https://api.sec-api.io/query?token=${secKey}`;
+      const query = {
+          query: {
+            "query_string": { "query": symbol }
+          },
+          from: 0,
+          size: 10,
+          sort: [{ "filedDate": { "order": "desc" } }]
+      };
+      try {
+        const response = await fetch(url, {
+           method: "POST",
+           headers: {
+             "Content-Type": "application/json"
+           },
+           body: JSON.stringify(query)
+        });
+        if(response.ok) {
+           const data = await response.json();
+           if(data && data.hits && data.hits.hits) {
+             return data.hits.hits.map(hit => {
+               const src = hit._source;
+               return {
+                 fund: src.fundName || "קרן לא מזוהה",
+                 currentHolding: {
+                    shares: src.shares || 0,
+                    marketValue: src.marketValue || 0
+                 },
+                 actions: [
+                    { date: src.filedDate, shares: src.shares, marketValue: src.marketValue }
+                 ],
+                 infoLink: "https://api.sec-api.io/"
+               };
+             });
+           }
         }
-      ];
-    }
-
-    // פונקציה לקבלת רכישות אחרונות של קרנות (14 הימים האחרונים) – נתוני סימולציה
-    async function fetchRecentFundPurchases() {
-      // דוגמה של רכישות עבור מספר קרנות
-      return [
-        { fund: 'Vanguard', symbol: 'RXRX', date: new Date(new Date().getTime() - 3*86400000), shares: 500000, marketValue: 4000000 },
-        { fund: 'Berkshire Hathaway', symbol: 'AAPL', date: new Date(new Date().getTime() - 7*86400000), shares: 300000, marketValue: 3500000 },
-        { fund: 'BlackRock', symbol: 'MSFT', date: new Date(new Date().getTime() - 10*86400000), shares: 400000, marketValue: 5000000 },
-        { fund: 'Fidelity', symbol: 'GOOG', date: new Date(new Date().getTime() - 5*86400000), shares: 250000, marketValue: 3000000 },
-        { fund: 'PRGFX', symbol: 'AMZN', date: new Date(new Date().getTime() - 2*86400000), shares: 350000, marketValue: 4500000 }
-      ];
+      } catch(e) { console.error(e); }
+      return []; // במידה ואין נתונים, מוחזר מערך ריק
     }
 
     // טוען את טבלת המניות בעמוד הראשי
@@ -590,6 +633,44 @@
       });
     }
 
+    // קריאה לרכישות אחרונות של קרנות – כאן נעשה שימוש ב-SEC API לצורך שאילתה (יש להתאים את השאילתה לפי התיעוד)
+    async function fetchRecentFundPurchases() {
+      const { secKey } = getAPIKeys();
+      const url = `https://api.sec-api.io/query?token=${secKey}`;
+      const query = {
+          query: {
+              "query_string": { "query": "filingType:13F AND symbol:*" }
+          },
+          from: 0,
+          size: 10,
+          sort: [{ "filedDate": { "order": "desc" } }]
+      };
+      try {
+        const response = await fetch(url, {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify(query)
+        });
+        if(response.ok) {
+           const data = await response.json();
+           if(data && data.hits && data.hits.hits) {
+             // נניח שכל hit מכיל את הסימול, שם הקרן, תאריך, מספר מניות ושווי – יש להתאים בהתאם לתיעוד
+             return data.hits.hits.map(hit => {
+               const src = hit._source;
+               return {
+                 symbol: src.symbol || "לא זמין",
+                 fund: src.fundName || "לא מזוהה",
+                 date: src.filedDate ? new Date(src.filedDate) : new Date(),
+                 shares: src.shares || 0,
+                 marketValue: src.marketValue || 0
+               };
+             });
+           }
+        }
+      } catch(e) { console.error(e); }
+      return []; // אם אין נתונים, מוחזר מערך ריק
+    }
+
     // שמירה ל-GitHub (יש לעדכן פרטים אישיים)
     document.getElementById('save-button').addEventListener('click', () => {
       const stockList = getStockList();
@@ -599,20 +680,14 @@
       const token = 'YOUR_GITHUB_PERSONAL_ACCESS_TOKEN';
 
       fetch(`https://api.github.com/repos/${username}/${repo}/contents/${filePath}`, {
-        headers: {
-          'Authorization': 'token ' + token
-        }
+        headers: { 'Authorization': 'token ' + token }
       })
       .then(response => response.json())
       .then(data => {
         let sha = data.sha;
         let content = btoa(JSON.stringify(stockList, null, 2));
         const commitMessage = 'Update stock list';
-        const body = {
-          message: commitMessage,
-          content: content,
-          sha: sha
-        };
+        const body = { message: commitMessage, content: content, sha: sha };
 
         return fetch(`https://api.github.com/repos/${username}/${repo}/contents/${filePath}`, {
           method: 'PUT',
@@ -624,9 +699,7 @@
         });
       })
       .then(response => response.json())
-      .then(result => {
-        alert('רשימת המניות נשמרה בהצלחה ב-GitHub!');
-      })
+      .then(result => { alert('רשימת המניות נשמרה בהצלחה ב-GitHub!'); })
       .catch(error => {
         console.error('שגיאה בשמירה ל-GitHub:', error);
         alert('שגיאה בשמירה ל-GitHub. בדקו את הקונסול לפרטים.');
@@ -678,7 +751,7 @@
         const keywords = ["דילול", "בייבאק", "מענק", "מניה", "עובדים"];
         return keywords.some(keyword => item.headline.toLowerCase().includes(keyword.toLowerCase()));
       });
-      // חדשות שוק – החדשות שלא נמצאות ב-corporateNews (לפי כותרת)
+      // חדשות שוק – החדשות שאינן כלולות ב־corporateNews (לפי כותרת)
       const corporateSet = new Set(corporateNews.map(item => item.headline));
       const generalNews = allNews.filter(item => !corporateSet.has(item.headline));
 
@@ -712,23 +785,27 @@
         });
       }
 
-      // טעינת מידע על קרנות (עם נתוני סימולציה עבור קרנות מגוונות)
+      // טעינת מידע על קרנות – באמצעות קריאה ל-SEC API (לפי שאילתה)
       const fundsData = await fetchFundHoldings(symbol);
       const fundsEl = document.getElementById('funds-list');
       fundsEl.innerHTML = '';
-      fundsData.forEach(fund => {
-        const div = document.createElement('div');
-        div.className = 'fund-item';
-        let html = `<strong>קרן: ${fund.fund}</strong> (<a href="${fund.infoLink}" target="_blank">מקור</a>)<br>`;
-        html += `אחזקה נוכחית: ${fund.currentHolding.shares.toLocaleString()} מניות, שווי: ${fund.currentHolding.marketValue.toLocaleString()} $<br>`;
-        html += `<em>פעולות אחרונות:</em><ul>`;
-        fund.actions.forEach(action => {
-          html += `<li>${action.date}: ${action.shares.toLocaleString()} מניות, שווי: ${action.marketValue.toLocaleString()} $</li>`;
+      if(fundsData.length === 0) {
+        fundsEl.innerHTML = '<p>אין נתונים זמינים לגבי קרנות עבור מניה זו.</p>';
+      } else {
+        fundsData.forEach(fund => {
+          const div = document.createElement('div');
+          div.className = 'fund-item';
+          let html = `<strong>קרן: ${fund.fund}</strong> (<a href="${fund.infoLink}" target="_blank">מקור</a>)<br>`;
+          html += `אחזקה נוכחית: ${fund.currentHolding.shares.toLocaleString()} מניות, שווי: ${fund.currentHolding.marketValue.toLocaleString()} $<br>`;
+          html += `<em>פעולות אחרונות:</em><ul>`;
+          fund.actions.forEach(action => {
+            html += `<li>${action.date}: ${action.shares.toLocaleString()} מניות, שווי: ${action.marketValue.toLocaleString()} $</li>`;
+          });
+          html += `</ul>`;
+          div.innerHTML = html;
+          fundsEl.appendChild(div);
         });
-        html += `</ul>`;
-        div.innerHTML = html;
-        fundsEl.appendChild(div);
-      });
+      }
     }
 
     // פונקציה לקבלת מידע בסיסי על מניה מ-Alpha Vantage
@@ -737,12 +814,9 @@
       try {
         const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${alphaKey}`);
         if(response.ok){
-          const data = await response.json();
-          return data;
+          return await response.json();
         }
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) { console.error(e); }
       return {};
     }
   </script>

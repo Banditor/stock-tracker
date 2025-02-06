@@ -175,6 +175,7 @@
     <h1>מעקב מניות</h1>
     <div class="buttons">
       <button id="toggle-settings">הגדרות API</button>
+      <button id="start-log-button">התחל תיעוד</button>
       <button id="download-log-button">Download LOG</button>
     </div>
   </header>
@@ -275,18 +276,27 @@
   </div>
 
   <script>
-    // מערך לוגים גלובלי
+    // משתנה גלובלי לשליטה בהפעלת הלוגינג
+    let loggingEnabled = false;
     const logs = [];
 
-    // פונקציה להוספת הודעת log
+    // פונקציה להוספת הודעת log (תוסיף רק אם loggingEnabled=true)
     function addLog(message) {
+      if (!loggingEnabled) return;
       const timestamp = new Date().toISOString();
       const logEntry = `[${timestamp}] ${message}`;
       logs.push(logEntry);
       console.log(logEntry);
     }
 
-    // כפתור הורדת LOG – יוצר קובץ טקסט עם הלוגים ומפעיל הורדה
+    // כפתור "התחל תיעוד" מפעיל את הלוגינג
+    document.getElementById('start-log-button').addEventListener('click', () => {
+      loggingEnabled = true;
+      addLog("תיעוד התחיל");
+      alert("תיעוד התחיל – כעת כל הפעולות יתועדו");
+    });
+
+    // כפתור "Download LOG" – יוריד קובץ טקסט עם הלוגים
     document.getElementById('download-log-button').addEventListener('click', () => {
       const blob = new Blob([logs.join("\n")], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -378,7 +388,7 @@
       addLog("הוסר מניה: " + symbol);
     }
 
-    // פונקציה שמחשבת "לפני כמה זמן" (לדוגמא: דקות/שעות/ימים)
+    // פונקציה שמחשבת "לפני כמה זמן"
     function timeSince(date) {
       const seconds = Math.floor((new Date() - new Date(date)) / 1000);
       let interval = Math.floor(seconds / 31536000);
@@ -534,7 +544,6 @@
       return uniqueNews;
     }
 
-    // קריאה לנתוני קרנות – משתמשים ב-SEC API (יש להתאים את השאילתה בהתאם לתיעוד)
     async function fetchFundHoldings(symbol) {
       const { secKey } = getAPIKeys();
       const url = `https://api.sec-api.io/query?token=${secKey}`;
@@ -579,7 +588,6 @@
       return [];
     }
 
-    // טוען את טבלת המניות בעמוד הראשי
     async function loadStocksTable() {
       const stockList = getStockList();
       const tableBody = document.getElementById('stocks-table-body');
@@ -644,7 +652,6 @@
       addLog("טבלת מניות נטענה");
     }
 
-    // טוען את רכישות הקרנות בעמוד הראשי (14 הימים האחרונים)
     async function loadRecentPurchases() {
       const purchases = await fetchRecentFundPurchases();
       const body = document.getElementById('recent-purchases-body');
@@ -669,6 +676,47 @@
         body.appendChild(tr);
       });
       addLog("רכישות קרנות נטענו");
+    }
+
+    // דוגמה לקריאה לרכישות קרנות – יש להתאים את השאילתה בהתאם לתיעוד SEC API
+    async function fetchRecentFundPurchases() {
+      const { secKey } = getAPIKeys();
+      const url = `https://api.sec-api.io/query?token=${secKey}`;
+      const query = {
+          query: {
+              "query_string": { "query": "filingType:13F AND symbol:*" }
+          },
+          from: 0,
+          size: 10,
+          sort: [{ "filedDate": { "order": "desc" } }]
+      };
+      try {
+        const response = await fetch(url, {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify(query)
+        });
+        if(response.ok) {
+           const data = await response.json();
+           if(data && data.hits && data.hits.hits) {
+             addLog("רכישות קרנות התקבלו");
+             return data.hits.hits.map(hit => {
+               const src = hit._source;
+               return {
+                 symbol: src.symbol || "לא זמין",
+                 fund: src.fundName || "לא מזוהה",
+                 date: src.filedDate ? new Date(src.filedDate) : new Date(),
+                 shares: src.shares || 0,
+                 marketValue: src.marketValue || 0
+               };
+             });
+           }
+        }
+      } catch(e) { 
+        console.error(e); 
+        addLog(`שגיאה ב-fetchRecentFundPurchases: ${e}`);
+      }
+      return [];
     }
 
     // שמירה ל-GitHub (יש לעדכן פרטים אישיים)

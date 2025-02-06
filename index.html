@@ -25,6 +25,10 @@
       margin: 0;
       font-size: 24px;
     }
+    header .buttons {
+      display: flex;
+      gap: 10px;
+    }
     header button {
       background: #fff;
       color: #00539C;
@@ -169,7 +173,10 @@
 <body>
   <header>
     <h1>מעקב מניות</h1>
-    <button id="toggle-settings">הגדרות API</button>
+    <div class="buttons">
+      <button id="toggle-settings">הגדרות API</button>
+      <button id="download-log-button">Download LOG</button>
+    </div>
   </header>
   <div class="container">
     <!-- הגדרות API -->
@@ -268,6 +275,29 @@
   </div>
 
   <script>
+    // מערך לוגים גלובלי
+    const logs = [];
+
+    // פונקציה להוספת הודעת log
+    function addLog(message) {
+      const timestamp = new Date().toISOString();
+      const logEntry = `[${timestamp}] ${message}`;
+      logs.push(logEntry);
+      console.log(logEntry);
+    }
+
+    // כפתור הורדת LOG – יוצר קובץ טקסט עם הלוגים ומפעיל הורדה
+    document.getElementById('download-log-button').addEventListener('click', () => {
+      const blob = new Blob([logs.join("\n")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "log.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog("המשתמש הוריד את הלוג");
+    });
+
     // מפתחות ברירת מחדל
     const defaultAlphaKey = "NGLPQWAGSXDBTCB5";
     const defaultFinnhubKey = "cuidauhr01qtqfmidisgcuidauhr01qtqfmidit0";
@@ -300,12 +330,14 @@
       if(nasdaqKey) localStorage.setItem('nasdaqKey', nasdaqKey);
       if(secKey) localStorage.setItem('secKey', secKey);
       alert('הגדרות API נשמרו!');
+      addLog("הגדרות API עודכנו");
     });
 
     // הצגת/הסתרת הגדרות API
     document.getElementById('toggle-settings').addEventListener('click', () => {
       const panel = document.getElementById('settings-panel');
       panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+      addLog("משתמש החליף תצוגת הגדרות API: " + panel.style.display);
     });
 
     // ניהול רשימת מניות ב-localStorage
@@ -315,6 +347,7 @@
     }
     function setStockList(list) {
       localStorage.setItem(STOCK_LIST_KEY, JSON.stringify(list));
+      addLog("רשימת המניות עודכנה: " + JSON.stringify(list));
     }
 
     // הוספת מניה חדשה
@@ -329,6 +362,7 @@
           setStockList(stockList);
           loadStocksTable();
           loadRecentPurchases();
+          addLog("נוספה מניה: " + symbol);
         }
         symbolInput.value = '';
       }
@@ -341,6 +375,7 @@
       setStockList(stockList);
       loadStocksTable();
       loadRecentPurchases();
+      addLog("הוסר מניה: " + symbol);
     }
 
     // פונקציה שמחשבת "לפני כמה זמן" (לדוגמא: דקות/שעות/ימים)
@@ -360,23 +395,22 @@
     }
 
     // --- פונקציות לקריאת נתוני מחיר (Quote) וחדשות ממספר API ---
-
-    // קריאה לנתוני Quote מ-Finnhub
     async function fetchQuote(symbol) {
       const { finnhubKey } = getAPIKeys();
       try {
         const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`);
         if(response.ok) {
           const data = await response.json();
-          return data; // c: מחיר אחרון, d: שינוי, dp: אחוז שינוי
+          addLog(`נתוני Quote עבור ${symbol} התקבלו`);
+          return data;
         }
       } catch(e) {
         console.error(e);
+        addLog(`שגיאה ב-fetchQuote עבור ${symbol}: ${e}`);
       }
       return null;
     }
 
-    // קריאה לחדשות מ-Finnhub
     async function fetchNewsFinnhub(symbol) {
       const { finnhubKey } = getAPIKeys();
       let today = new Date();
@@ -388,6 +422,7 @@
         const response = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${to}&token=${finnhubKey}`);
         if(response.ok){
           const data = await response.json();
+          addLog(`חדשות Finnhub עבור ${symbol} התקבלו`);
           return data.map(item => ({
              date: item.datetime ? new Date(item.datetime * 1000) : new Date(),
              headline: item.headline,
@@ -396,17 +431,20 @@
              source: "Finnhub"
           }));
         }
-      } catch(e) { console.error(e); }
+      } catch(e) { 
+        console.error(e); 
+        addLog(`שגיאה ב-fetchNewsFinnhub עבור ${symbol}: ${e}`);
+      }
       return [];
     }
 
-    // קריאה לחדשות מ-Financial Modeling Prep
     async function fetchNewsFMP(symbol) {
       const { fmpKey } = getAPIKeys();
       try {
         const response = await fetch(`https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpKey}`);
         if(response.ok){
           const data = await response.json();
+          addLog(`חדשות FMP עבור ${symbol} התקבלו`);
           return data.map(item => ({
              date: item.publishedDate ? new Date(item.publishedDate) : new Date(),
              headline: item.title,
@@ -415,14 +453,15 @@
              source: "Financial Modeling Prep"
           }));
         }
-      } catch(e) { console.error(e); }
+      } catch(e) { 
+        console.error(e); 
+        addLog(`שגיאה ב-fetchNewsFMP עבור ${symbol}: ${e}`);
+      }
       return [];
     }
 
-    // קריאה לחדשות מ-Nasdaq Data Link
     async function fetchNasdaqNews(symbol) {
       const { nasdaqKey } = getAPIKeys();
-      // ייתכן ויש צורך להתאים את הקוד למזהה המדויק של קבוצת הנתונים (dataset) עבור חדשות
       const url = `https://data.nasdaq.com/api/v3/datasets/NASDAQ/NEWS.json?api_key=${nasdaqKey}&ticker=${symbol}`;
       try {
         const response = await fetch(url);
@@ -430,7 +469,6 @@
           const data = await response.json();
           let newsItems = [];
           if(data && data.dataset && data.dataset.data) {
-              // הנחה: כל פריט הוא מערך עם: [date, headline, summary, url, ...]
               newsItems = data.dataset.data.map(item => ({
                   date: new Date(item[0]),
                   headline: item[1],
@@ -439,16 +477,18 @@
                   source: "Nasdaq Data Link"
               }));
           }
+          addLog(`חדשות Nasdaq עבור ${symbol} התקבלו`);
           return newsItems;
         }
-      } catch(e) { console.error(e); }
+      } catch(e) { 
+        console.error(e); 
+        addLog(`שגיאה ב-fetchNasdaqNews עבור ${symbol}: ${e}`);
+      }
       return [];
     }
 
-    // קריאה לנתוני filings / חדשות מ-SEC API
     async function fetchSecNews(symbol) {
       const { secKey } = getAPIKeys();
-      // שימוש ב-SEC API לקבלת דוחות רלוונטיים (למשל 13F או filings אחרים)
       const url = `https://api.sec-api.io/filings?query=${symbol}&token=${secKey}`;
       try {
         const response = await fetch(url);
@@ -464,13 +504,16 @@
               source: "SEC API"
             }));
           }
+          addLog(`חדשות SEC עבור ${symbol} התקבלו`);
           return newsItems;
         }
-      } catch(e) { console.error(e); }
+      } catch(e) { 
+        console.error(e); 
+        addLog(`שגיאה ב-fetchSecNews עבור ${symbol}: ${e}`);
+      }
       return [];
     }
 
-    // מאגד את כל מקורות החדשות
     async function fetchNews(symbol) {
       const [n1, n2, n3, n4] = await Promise.all([
         fetchNewsFinnhub(symbol),
@@ -479,7 +522,6 @@
         fetchSecNews(symbol)
       ]);
       const combined = [...n1, ...n2, ...n3, ...n4];
-      // הסרת כפילויות ומיון לפי תאריך יורד
       const uniqueNews = [];
       const headlines = new Set();
       combined.sort((a, b) => b.date - a.date).forEach(item => {
@@ -488,10 +530,11 @@
              uniqueNews.push(item);
           }
       });
+      addLog(`חדשות מאוחדות עבור ${symbol} סוכמו, ${uniqueNews.length} פריטים`);
       return uniqueNews;
     }
 
-    // קריאה לנתוני קרנות – במקום dummy data, מבצעים קריאה ל-SEC API לקבלת נתוני filings (כדוגמה, יש להתאים לפי תיעוד)
+    // קריאה לנתוני קרנות – משתמשים ב-SEC API (יש להתאים את השאילתה בהתאם לתיעוד)
     async function fetchFundHoldings(symbol) {
       const { secKey } = getAPIKeys();
       const url = `https://api.sec-api.io/query?token=${secKey}`;
@@ -506,14 +549,13 @@
       try {
         const response = await fetch(url, {
            method: "POST",
-           headers: {
-             "Content-Type": "application/json"
-           },
+           headers: { "Content-Type": "application/json" },
            body: JSON.stringify(query)
         });
         if(response.ok) {
            const data = await response.json();
            if(data && data.hits && data.hits.hits) {
+             addLog(`נתוני קרנות עבור ${symbol} התקבלו`);
              return data.hits.hits.map(hit => {
                const src = hit._source;
                return {
@@ -530,8 +572,11 @@
              });
            }
         }
-      } catch(e) { console.error(e); }
-      return []; // במידה ואין נתונים, מוחזר מערך ריק
+      } catch(e) { 
+        console.error(e);
+        addLog(`שגיאה ב-fetchFundHoldings עבור ${symbol}: ${e}`);
+      }
+      return [];
     }
 
     // טוען את טבלת המניות בעמוד הראשי
@@ -539,17 +584,12 @@
       const stockList = getStockList();
       const tableBody = document.getElementById('stocks-table-body');
       tableBody.innerHTML = '';
-
       for (const symbol of stockList) {
-        // קבלת נתוני Quote
         const quote = await fetchQuote(symbol);
-        // קבלת חדשות – לוקחים את שתי החדשות האחרונות
         const allNews = await fetchNews(symbol);
         const latestNews = allNews.slice(0, 2);
-
         const tr = document.createElement('tr');
 
-        // עמודת סימול – לחיצה מובילה לעמוד הפרטים
         const tdSymbol = document.createElement('td');
         const link = document.createElement('a');
         link.href = window.location.pathname + '?symbol=' + symbol;
@@ -557,7 +597,6 @@
         tdSymbol.appendChild(link);
         tr.appendChild(tdSymbol);
 
-        // עמודת מחיר אחרון (אחוז שינוי)
         const tdLastPrice = document.createElement('td');
         if (quote && quote.c) {
           tdLastPrice.textContent = quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%" : "0%") + ")";
@@ -566,7 +605,6 @@
         }
         tr.appendChild(tdLastPrice);
 
-        // עמודת שינוי היום
         const tdChange = document.createElement('td');
         if (quote) {
           const changeText = (quote.d >= 0 ? "+" : "") + (quote.d ? quote.d.toFixed(2) : "0");
@@ -577,7 +615,6 @@
         }
         tr.appendChild(tdChange);
 
-        // עמודת חדשות – שתי החדשות האחרונות
         const tdNews = document.createElement('td');
         if (latestNews.length > 0) {
           latestNews.forEach(item => {
@@ -591,7 +628,6 @@
         }
         tr.appendChild(tdNews);
 
-        // עמודת פעולות – כפתור להסרת המניה
         const tdActions = document.createElement('td');
         const removeBtn = document.createElement('button');
         removeBtn.textContent = "X";
@@ -605,6 +641,7 @@
 
         tableBody.appendChild(tr);
       }
+      addLog("טבלת מניות נטענה");
     }
 
     // טוען את רכישות הקרנות בעמוד הראשי (14 הימים האחרונים)
@@ -631,44 +668,7 @@
         tr.appendChild(tdValue);
         body.appendChild(tr);
       });
-    }
-
-    // קריאה לרכישות אחרונות של קרנות – כאן נעשה שימוש ב-SEC API לצורך שאילתה (יש להתאים את השאילתה לפי התיעוד)
-    async function fetchRecentFundPurchases() {
-      const { secKey } = getAPIKeys();
-      const url = `https://api.sec-api.io/query?token=${secKey}`;
-      const query = {
-          query: {
-              "query_string": { "query": "filingType:13F AND symbol:*" }
-          },
-          from: 0,
-          size: 10,
-          sort: [{ "filedDate": { "order": "desc" } }]
-      };
-      try {
-        const response = await fetch(url, {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify(query)
-        });
-        if(response.ok) {
-           const data = await response.json();
-           if(data && data.hits && data.hits.hits) {
-             // נניח שכל hit מכיל את הסימול, שם הקרן, תאריך, מספר מניות ושווי – יש להתאים בהתאם לתיעוד
-             return data.hits.hits.map(hit => {
-               const src = hit._source;
-               return {
-                 symbol: src.symbol || "לא זמין",
-                 fund: src.fundName || "לא מזוהה",
-                 date: src.filedDate ? new Date(src.filedDate) : new Date(),
-                 shares: src.shares || 0,
-                 marketValue: src.marketValue || 0
-               };
-             });
-           }
-        }
-      } catch(e) { console.error(e); }
-      return []; // אם אין נתונים, מוחזר מערך ריק
+      addLog("רכישות קרנות נטענו");
     }
 
     // שמירה ל-GitHub (יש לעדכן פרטים אישיים)
@@ -678,7 +678,6 @@
       const repo = 'YOUR_REPO';
       const filePath = 'stockList.json';
       const token = 'YOUR_GITHUB_PERSONAL_ACCESS_TOKEN';
-
       fetch(`https://api.github.com/repos/${username}/${repo}/contents/${filePath}`, {
         headers: { 'Authorization': 'token ' + token }
       })
@@ -688,7 +687,6 @@
         let content = btoa(JSON.stringify(stockList, null, 2));
         const commitMessage = 'Update stock list';
         const body = { message: commitMessage, content: content, sha: sha };
-
         return fetch(`https://api.github.com/repos/${username}/${repo}/contents/${filePath}`, {
           method: 'PUT',
           headers: {
@@ -699,10 +697,14 @@
         });
       })
       .then(response => response.json())
-      .then(result => { alert('רשימת המניות נשמרה בהצלחה ב-GitHub!'); })
+      .then(result => { 
+        alert('רשימת המניות נשמרה בהצלחה ב-GitHub!');
+        addLog("שמירה ל-GitHub בוצעה בהצלחה");
+      })
       .catch(error => {
         console.error('שגיאה בשמירה ל-GitHub:', error);
         alert('שגיאה בשמירה ל-GitHub. בדקו את הקונסול לפרטים.');
+        addLog("שגיאה בשמירה ל-GitHub: " + error);
       });
     });
 
@@ -714,44 +716,39 @@
         document.getElementById('main-page').style.display = 'none';
         document.getElementById('stock-details').style.display = 'block';
         loadStockDetails(symbolParam);
+        addLog("הועבר לעמוד פרטים עבור " + symbolParam);
       } else {
         document.getElementById('main-page').style.display = 'block';
         document.getElementById('stock-details').style.display = 'none';
         loadStocksTable();
         loadRecentPurchases();
+        addLog("הועבר לעמוד הראשי");
       }
     });
 
     // כפתור "חזור לרשימה" בעמוד הפרטים
     document.getElementById('back-button').addEventListener('click', () => {
       window.location.href = window.location.pathname;
+      addLog("לחצן 'חזור לרשימה' נלחץ");
     });
 
     // טעינת פרטי מניה בעמוד הפרטים
     async function loadStockDetails(symbol) {
       document.getElementById('stock-title').textContent = 'מידע על מניה: ' + symbol;
-      
-      // קבלת נתוני Quote
       const quote = await fetchQuote(symbol);
       if (quote) {
         document.getElementById('last-price').textContent = quote.c ? quote.c.toFixed(2) + " (" + (quote.dp ? quote.dp.toFixed(2) + "%" : "0%") + ")" : "לא זמין";
       } else {
         document.getElementById('last-price').textContent = "לא זמין";
       }
-      
-      // טעינת מידע בסיסי דרך Alpha Vantage
       const overview = await fetchStockOverview(symbol);
       document.getElementById('market-cap').textContent = overview.MarketCapitalization ? parseInt(overview.MarketCapitalization).toLocaleString() + " $" : "לא זמין";
       document.getElementById('total-shares').textContent = overview.SharesOutstanding ? parseInt(overview.SharesOutstanding).toLocaleString() : "לא זמין";
-
-      // טעינת חדשות
       const allNews = await fetchNews(symbol);
-      // פילטר לחדשות מבנה מניות – לפי מילות מפתח ספציפיות
       const corporateNews = allNews.filter(item => {
         const keywords = ["דילול", "בייבאק", "מענק", "מניה", "עובדים"];
         return keywords.some(keyword => item.headline.toLowerCase().includes(keyword.toLowerCase()));
       });
-      // חדשות שוק – החדשות שאינן כלולות ב־corporateNews (לפי כותרת)
       const corporateSet = new Set(corporateNews.map(item => item.headline));
       const generalNews = allNews.filter(item => !corporateSet.has(item.headline));
 
@@ -785,7 +782,6 @@
         });
       }
 
-      // טעינת מידע על קרנות – באמצעות קריאה ל-SEC API (לפי שאילתה)
       const fundsData = await fetchFundHoldings(symbol);
       const fundsEl = document.getElementById('funds-list');
       fundsEl.innerHTML = '';
@@ -806,17 +802,22 @@
           fundsEl.appendChild(div);
         });
       }
+      addLog("עמוד הפרטים נטען עבור " + symbol);
     }
 
-    // פונקציה לקבלת מידע בסיסי על מניה מ-Alpha Vantage
     async function fetchStockOverview(symbol) {
       const { alphaKey } = getAPIKeys();
       try {
         const response = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${alphaKey}`);
         if(response.ok){
-          return await response.json();
+          const data = await response.json();
+          addLog(`נתוני Overview עבור ${symbol} התקבלו`);
+          return data;
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.error(e);
+        addLog(`שגיאה ב-fetchStockOverview עבור ${symbol}: ${e}`);
+      }
       return {};
     }
   </script>
